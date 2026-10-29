@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cancel Booking</title>
+    <!-- Web resource: atos_/html/booking_cancel_dialog.html
+         Opened by Atos.NPE.Booking.Ribbon.CancelBooking via Xrm.Navigation.navigateTo (pageType: webresource, target: 2).
+         Receives the booking id in the "data" query parameter, cancels the booking itself, then closes. -->
+    <style>
+        * { box-sizing: border-box; }
+        html, body { margin: 0; height: 100%; font-family: "Segoe UI", "Segoe UI Web (West European)", -apple-system, sans-serif; color: #242424; background: #fff; }
+        .page { display: flex; flex-direction: column; height: 100%; padding: 20px 24px 16px; }
+        .intro { margin: 0 0 16px; font-size: 14px; color: #424242; }
+        label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+        label .req { color: #c50f1f; margin-left: 2px; }
+        textarea { flex: 1; width: 100%; min-height: 110px; resize: none; padding: 8px 10px; font: inherit; font-size: 14px;
+                   border: 1px solid #d1d1d1; border-bottom: 2px solid #616161; border-radius: 4px; outline: none; }
+        textarea:focus { border-bottom-color: #0F4C5C; }
+        textarea.invalid { border-color: #c50f1f; border-bottom-color: #c50f1f; }
+        .error { min-height: 18px; margin: 6px 0 0; font-size: 12px; color: #c50f1f; }
+        .footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+        button { min-width: 96px; height: 32px; padding: 0 16px; font: inherit; font-size: 14px; font-weight: 600; border-radius: 4px; cursor: pointer; }
+        .primary { background: #0F4C5C; color: #fff; border: 1px solid #0F4C5C; }
+        .primary:hover { background: #0A3A47; }
+        .primary:disabled { background: #e0e0e0; color: #a6a6a6; border-color: #e0e0e0; cursor: default; }
+        .secondary { background: #fff; color: #242424; border: 1px solid #d1d1d1; }
+        .secondary:hover { background: #f5f5f5; }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <p class="intro">The booking will be cancelled and its time slot released for other bookings.</p>
+
+        <label for="reason">Cancellation Reason<span class="req" aria-hidden="true">*</span></label>
+        <textarea id="reason" maxlength="2000" aria-required="true" placeholder="Why is this booking being cancelled?"></textarea>
+        <p class="error" id="error" role="alert"></p>
+
+        <div class="footer">
+            <button type="button" class="primary" id="btnOk" disabled>OK</button>
+            <button type="button" class="secondary" id="btnCancel">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            "use strict";
+
+            var ENTITY_SET = "atos_bookings";
+            var FIELDS = { reason: "atos_cancelationreason", status: "statecode", statusReason: "statuscode" };
+            var ENUMS = { statusInactive: 1, statusReasonCancelled: 2 };
+
+            var reasonEl = document.getElementById("reason");
+            var errorEl = document.getElementById("error");
+            var okBtn = document.getElementById("btnOk");
+            var cancelBtn = document.getElementById("btnCancel");
+
+            var bookingId = getBookingId();
+
+            reasonEl.addEventListener("input", function () {
+                var hasText = reasonEl.value.trim().length > 0;
+                okBtn.disabled = !hasText;
+                if (hasText) { setError(""); }
+            });
+
+            okBtn.addEventListener("click", function () {
+                var reason = reasonEl.value.trim();
+                if (!reason) {
+                    setError("Cancellation Reason is required.");
+                    return;
+                }
+                if (!bookingId) {
+                    setError("Booking not found. Close this dialog and try again.");
+                    return;
+                }
+
+                setBusy(true);
+
+                var body = {};
+                body[FIELDS.reason] = reason;
+                body[FIELDS.status] = ENUMS.statusInactive;
+                body[FIELDS.statusReason] = ENUMS.statusReasonCancelled;
+
+                fetch(getClientUrl() + "/api/data/v9.2/" + ENTITY_SET + "(" + bookingId + ")", {
+                    method: "PATCH",
+                    credentials: "same-origin",
+                    headers: {
+                        "Accept": "application/json",
+                        "Content-Type": "application/json; charset=utf-8",
+                        "OData-MaxVersion": "4.0",
+                        "OData-Version": "4.0",
+                        "If-Match": "*"
+                    },
+                    body: JSON.stringify(body)
+                }).then(function (response) {
+                    if (response.ok) {
+                        closeDialog();
+                        return;
+                    }
+                    return response.json().then(function (json) {
+                        throw new Error(json && json.error ? json.error.message : "The booking could not be cancelled.");
+                    });
+                }).catch(function (error) {
+                    setBusy(false);
+                    setError(error.message || String(error));
+                });
+            });
+
+            cancelBtn.addEventListener("click", closeDialog);
+
+            reasonEl.focus();
+
+            function getBookingId() {
+                var params = new URLSearchParams(window.location.search);
+                var data = params.get("data") || params.get("Data") || "";
+                return data.replace(/[{}]/g, "");
+            }
+
+            function getClientUrl() {
+                try {
+                    var xrm = window.parent && window.parent.Xrm;
+                    if (xrm && xrm.Utility) { return xrm.Utility.getGlobalContext().getClientUrl(); }
+                } catch (e) { /* cross-frame access not available: fall back to this origin */ }
+                return window.location.origin;
+            }
+
+            function setError(message) {
+                errorEl.textContent = message;
+                reasonEl.classList.toggle("invalid", !!message);
+            }
+
+            function setBusy(isBusy) {
+                okBtn.disabled = isBusy || !reasonEl.value.trim();
+                cancelBtn.disabled = isBusy;
+                reasonEl.disabled = isBusy;
+                okBtn.textContent = isBusy ? "Saving..." : "OK";
+            }
+
+            /* Closes the model-driven dialog that hosts this page. */
+            function closeDialog() {
+                try {
+                    var doc = window.parent.document;
+                    var closeBtn = doc.querySelector("button[data-id='dialogCloseIconButton']")
+                        || doc.querySelector("button[aria-label='Close'][data-id*='dialogClose']");
+                    if (closeBtn) { closeBtn.click(); return; }
+                } catch (e) { /* ignore */ }
+                window.close();
+            }
+        })();
+    </script>
+</body>
+</html>

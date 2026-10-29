@@ -1,0 +1,88 @@
+
+var Atos = Atos || {};
+Atos.NPE = Atos.NPE || {};
+Atos.NPE.Booking = Atos.NPE.Booking || {};
+
+Atos.NPE.Booking.Fields = {
+    booking: "atos_bookingid",
+    name: "atos_name",
+    facility: "atos_facilityid",
+    member: "atos_memberid",
+    opportunity: "atos_opportunityid",
+    startTime: "atos_starttime",
+    endTime: "atos_endtime",
+    totalPrice: "atos_totalprice",
+    cancellationReason: "atos_cancelationreason",
+    status: "statecode",
+    statusReason: "statuscode"
+};
+
+Atos.NPE.Booking.Enums = {};
+
+Atos.NPE.Booking.Enums.status = {
+    Active: 0,
+    Inactive: 1
+};
+
+Atos.NPE.Booking.Enums.statusReason = {
+    Draft: 1,
+    Cancelled: 2,
+    Completed: 496710001,
+    Confirmed: 496710003
+};
+
+Atos.NPE.Booking.Constants = {
+    entityName: "atos_booking",
+    cancelDialogWebResource: "atos_/html/booking_cancel_dialog.html",
+    notificationCancelReason: "npe_cancel_reason",
+    notificationCancelDone: "npe_cancel_done"
+};
+
+Atos.NPE.Booking.Ribbon = {
+    CanCancel: function (primaryControl) {
+        var formContext = primaryControl;
+        var fields = Atos.NPE.Booking.Fields;
+        var enums = Atos.NPE.Booking.Enums;
+
+        if (!formContext || !formContext.data || CommonGeneric.IsCreateForm(formContext)) {
+            return false;
+        }
+
+        let status = CommonGeneric.GetFieldValue(formContext, fields.status);
+        let statusReason = CommonGeneric.GetFieldValue(formContext, fields.statusReason);
+
+        return status === enums.status.Active
+            && statusReason !== enums.statusReason.Completed
+            && statusReason !== enums.statusReason.Cancelled;
+    },
+
+    /* Command: open the "Cancel Booking" dialog (mandatory reason, OK / Cancel), then refresh the form. */
+    CancelBooking: function (primaryControl) {
+        var formContext = primaryControl;
+        var constants = Atos.NPE.Booking.Constants;
+
+        if (!Atos.NPE.Booking.Ribbon.CanCancel(formContext)) {
+            return;
+        }
+
+        formContext.data.save().then(function () {
+            var pageInput = {
+                pageType: "webresource",
+                webresourceName: constants.cancelDialogWebResource,
+                data: CommonGeneric.GetRecordId(formContext)
+            };
+            var navigationOptions = {
+                target: 2,          // dialog
+                position: 1,        // centre
+                width: { value: 480, unit: "px" },
+                height: { value: 340, unit: "px" },
+                title: "Cancel Booking"
+            };
+            return Xrm.Navigation.navigateTo(pageInput, navigationOptions);
+        }).then(function () {
+            formContext.data.refresh(false);
+        }).catch(function (error) {
+            Xrm.Navigation.openErrorDialog({ message: error && error.message ? error.message : String(error) });
+        });
+    }
+};
